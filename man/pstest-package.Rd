@@ -35,7 +35,7 @@ specification tests, depending on the chosen weight function \eqn{w(q,u)}:
 \itemize{
 \item{`ind' - the indicator weight function \eqn{w(q,u)=1(q \le u)}. This is the default.}
 \item{`exp' - the exponential weight function \eqn{w(q,u)=exp(qu)}.}
-\item{`logistic' - the logistic weight function \eqn{w(q,u)=1/[1+exp(-qu)]}.}
+\item{`logistic' - the logistic weight function \eqn{w(q,u)=1/[1+exp(1-qu)]}.}
 \item{`sin' - the sine weight function \eqn{w(q,u)=sin(qu)}.}
 \item{`sincos' - the sine and cosine weight function \eqn{w(q,u)=sin(qu)+cos(qu)}.}
 }
@@ -48,4 +48,3 @@ directions.
 Sant'Anna, Pedro H. C, and Song, Xiaojun (2016), \emph{Specification Tests for the Propensity Score},
       available at \url{http://sites.google.com/site/pedrohcsantanna/}.
 }
-

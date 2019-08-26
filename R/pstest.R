@@ -12,11 +12,13 @@
 #'               estimation. It should also include the constant term.
 #'@param model  a description of the functional form (link function) used
 #'              to estimated propensity score. The alternatives are:
-#'              'logit' (default), and 'probit'.
+#'              'logit' (default), 'probit', and het.probit
+#' @param pscore.model in case you you set model="het.probit", pscore.model is the entire hetglm object.
+#'                      Default for pscore.model is NULL.
 #'@param w a description of which weight function the projection is based on.
 #'            The alternatives are 'ind' (default), which set \eqn{w(q,u)=1(q<=u)},
 #'            'exp', which set \eqn{w(q,u)=exp(qu)}, 'logistic', which set
-#'            \eqn{w(q,u)=1/[1+exp(-qu)]}, 'sin', which set \eqn{w(q,u)=sin(qu)}, and
+#'            \eqn{w(q,u)=1/[1+exp(1-qu)]}, 'sin', which set \eqn{w(q,u)=sin(qu)}, and
 #'            'sincos', which set \eqn{w(q,u)=sin(qu)+cos(qu)}.
 #'@param dist a description of which distribution to use during the bootstrap.
 #'            The alternatives are 'Mammen' (default), and 'Rademacher'.
@@ -33,12 +35,12 @@
 #'@return a list containing the Kolmogorov-Smirnov and Cramer-von Mises test
 #'        statistics for the null hypothesis of correctly specified propensity
 #'        score model (kstest and cvmtest, respectively), and their associate
-#'        bootstrapped p-values, pvks and pvcvm, respectively. The weight function
-#'        which our projection is based on is also reported.
+#'        bootstrapped p-values, pvks and pvcvm, respectively. All inputs are also
+#'        returned.
 #'
 #'@references
-#'       Sant'Anna, Pedro H. C, and Song, Xiaojun (2016), \emph{Specification Tests for the Propensity Score},
-#'       available at \url{http://sites.google.com/site/pedrohcsantanna/}.
+#'       Sant'Anna, Pedro H. C, and Song, Xiaojun (2019), \emph{Specification Tests for the Propensity Score},
+#'       Journal of Econometrics, vol. 210 (2), p. 379-404.
 #'
 #'@examples
 #' # Example based on simulation data
@@ -63,12 +65,14 @@
 #'@export
 #'
 #'@importFrom stats binomial rbinom runif glm
-#'@importFrom parallel makeCluster parLapply stopCluster
-#'@importFrom harvestr gather
+#'@importFrom parallel makeCluster parLapply stopCluster nextRNGStream
+#'@importFrom glmx hetglm.fit
+#'@importFrom MASS ginv
 #-------------------------------------------------------------------------------
-pstest = function(d, pscore, xpscore, model = c("logit", "probit"),
-                  w = c("ind", "exp", "logistic", "sin", "sincos"),
-                  dist = c("Mammen", "Rademacher"),
+pstest = function(d, pscore, xpscore, pscore.model = NULL,
+                  model = "logit",
+                  w = "ind",
+                  dist = "Mammen",
                   nboot = 1000, cores = 1, chunk = 1000) {
     #-----------------------------------------------------------------------------
     # Define some underlying variables
@@ -76,6 +80,17 @@ pstest = function(d, pscore, xpscore, model = c("logit", "probit"),
     xx <- as.matrix(xpscore)
     pscore.fit <- pscore
     uhat <- d - pscore.fit
+    #-----------------------------------------------------------------------------
+    # Run some tests
+    if( !is.element(model,c("logit", "probit", "het.probit"))) {
+      stop("model must be either 'logit', 'probit' or 'het.probit' ")
+    }
+    if( !is.element(dist,c("Mammen", "Rademacher"))) {
+      stop("dist must be either 'Mammen', or 'Rademacher' ")
+    }
+    if( !is.element(w,c("ind", "exp", "logistic", "sin", "sincos"))) {
+      stop("w must be either 'ind', 'exp', 'logistic', 'sin', or 'sincos' ")
+    }
     #-----------------------------------------------------------------------------
     # #Define the score variables for the projection
     if (model == "logit") {
@@ -86,6 +101,31 @@ pstest = function(d, pscore, xpscore, model = c("logit", "probit"),
         g <- stats::dnorm(beta.x) * xx
         rm(beta.x)
     }
+    if (model == "het.probit") {
+      if(is.null(pscore.model)){
+        stop(" You must provide the entire hetglm model if you are using het. probit")
+      }
+      if(!class(pscore.model)=="hetglm"){
+        stop(" pscore.model must be estimated using the hetglm function. See glmx package")
+      }
+      if(is.null(pscore.model$x$scale)){
+        stop(" You must include the option x=T in your glmx model")
+      }
+
+      pp <- pscore.model
+      index.mean <- as.numeric(pp$x$mean %*% pp$coefficients$mean)
+      index.scale <- as.numeric(pp$x$scale %*% (pp$coefficients$scale))
+
+      #beta.x <- stats::qnorm(pscore.fit)
+      index <- index.mean * exp(-index.scale)
+      g <- cbind(stats::dnorm(index) * exp(-index.scale) *pp$x$mean,
+                 - stats::dnorm(index)*index.mean*exp(-index.scale)*pp$x$scale)
+
+
+      xx <- as.matrix(cbind(pp$x$mean,pp$x$scale))
+      #rm(pp,xx.scale,index.mean,index.scale,index )
+    }
+
     gg <- crossprod(g)
     #-----------------------------------------------------------------------------
     # Define variables to be used in the loop
@@ -93,7 +133,8 @@ pstest = function(d, pscore, xpscore, model = c("logit", "probit"),
     k.dim = dim(xx)[2]
 
     # unique pscores
-    un.pscores <- unique(pscore.fit)
+    #un.pscores <- unique(pscore.fit)
+    un.pscores <- (pscore.fit)
     n.unique <- length(un.pscores)
 
     # Initialize `beta` matrix (K coefficients for each of n.unique responses)
@@ -145,7 +186,7 @@ pstest = function(d, pscore, xpscore, model = c("logit", "probit"),
     #-----------------------------------------------------------------------------
     # Define seeds: Guarantee reproducibility
     ss <- floor(stats::runif(1) * 10000)
-    seed.temp <- harvestr::gather(nboot, seed = ss)
+    seed.temp <- gather.ps(nboot, seed = ss)
 
     Seed <- matrix(nrow = nboot, ncol = 6)
     for (i in 1:nboot) {
@@ -166,7 +207,9 @@ pstest = function(d, pscore, xpscore, model = c("logit", "probit"),
           end <- min(chunk * i, n.unique)
           w.temp <- outer(pscore.fit, un.pscores[start:end], "<=")
           Gw <- crossprod(g, w.temp)
-          beta[, start:end] <- solve(gg, Gw)
+
+          beta[, start:end] <- MASS::ginv(crossprod(g)) %*% Gw
+          #beta[, start:end] <- solve(gg, Gw)
           w1.temp <- (w.temp - g %*% beta[, start:end])
           Rw[start:end] <- colSums(uhat * w1.temp)/n
           # Now the bootstrapped test in the chunk
@@ -224,7 +267,7 @@ pstest = function(d, pscore, xpscore, model = c("logit", "probit"),
         start <- min(chunk * (i - 1) + 1, n.unique)
         end <- min(chunk * i, n.unique)
         w.temp <- tcrossprod(pscore.fit, un.pscores[start:end])
-        w.temp <- 1/(1+exp(w.temp))
+        w.temp <- 1/(1+exp(1-w.temp))
         Gw <- crossprod(g, w.temp)
         beta[, start:end] <- solve(gg, Gw)
         w1.temp <- (w.temp - g %*% beta[, start:end])
@@ -329,7 +372,16 @@ pstest = function(d, pscore, xpscore, model = c("logit", "probit"),
     pvksb <- sum((boottest[, 1] > kstest1))/nboot
     pvcvmb <- sum((boottest[, 2] > cvmtest1))/nboot
     #---------------------------------------------------------------------
+    # record the call
+    call.param <- match.call()
+    # Record all arguments used in the function
+    argu <- mget(names(formals()),sys.frame(sys.nframe()))
+    argu <- list(model = argu$model, w = argu$w, dist = argu$dist, nboot = argu$nboot )
     # Return these variables
-    list(kstest = kstest1, cvmtest = cvmtest1, pvks = pvksb, pvcvm = pvcvmb,
-         w = w)
+    ret <- list(kstest = kstest1, cvmtest = cvmtest1, pvks = pvksb, pvcvm = pvcvmb,
+                call.param = call.param, argu = argu)
+    # Define a new class
+    class(ret) <- "pstest"
+    # return the list
+    return(ret)
 }

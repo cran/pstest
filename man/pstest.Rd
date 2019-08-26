@@ -4,9 +4,9 @@
 \alias{pstest}
 \title{pstest: Tests for the Propensity Score}
 \usage{
-pstest(d, pscore, xpscore, model = c("logit", "probit"), w = c("ind", "exp",
-  "logistic", "sin", "sincos"), dist = c("Mammen", "Rademacher"),
-  nboot = 1000, cores = 1, chunk = 1000)
+pstest(d, pscore, xpscore, pscore.model = NULL, model = "logit",
+  w = "ind", dist = "Mammen", nboot = 1000, cores = 1,
+  chunk = 1000)
 }
 \arguments{
 \item{d}{a vector containing the binary treatment indicator.}
@@ -17,14 +17,17 @@ pstest(d, pscore, xpscore, model = c("logit", "probit"), w = c("ind", "exp",
 transformations) included in the propensity score
 estimation. It should also include the constant term.}
 
+\item{pscore.model}{in case you you set model="het.probit", pscore.model is the entire hetglm object.
+Default for pscore.model is NULL.}
+
 \item{model}{a description of the functional form (link function) used
 to estimated propensity score. The alternatives are:
-'logit' (default), and 'probit'.}
+'logit' (default), 'probit', and het.probit}
 
 \item{w}{a description of which weight function the projection is based on.
 The alternatives are 'ind' (default), which set \eqn{w(q,u)=1(q<=u)},
 'exp', which set \eqn{w(q,u)=exp(qu)}, 'logistic', which set
-\eqn{w(q,u)=1/[1+exp(-qu)]}, 'sin', which set \eqn{w(q,u)=sin(qu)}, and
+\eqn{w(q,u)=1/[1+exp(1-qu)]}, 'sin', which set \eqn{w(q,u)=sin(qu)}, and
 'sincos', which set \eqn{w(q,u)=sin(qu)+cos(qu)}.}
 
 \item{dist}{a description of which distribution to use during the bootstrap.
@@ -45,8 +48,8 @@ memory error, you should choose a smaller value for \emph{chunk}.}
 a list containing the Kolmogorov-Smirnov and Cramer-von Mises test
        statistics for the null hypothesis of correctly specified propensity
        score model (kstest and cvmtest, respectively), and their associate
-       bootstrapped p-values, pvks and pvcvm, respectively. The weight function
-       which our projection is based on is also reported.
+       bootstrapped p-values, pvks and pvcvm, respectively. All inputs are also
+       returned.
 }
 \description{
 \emph{pstest} computes Kolmogorov-Smirnov and Cramer-von Mises type tests
@@ -76,7 +79,6 @@ pstest(d = pscore$y, pscore = pscore$fit, xpscore = pscore$x,
 
 }
 \references{
-Sant'Anna, Pedro H. C, and Song, Xiaojun (2016), \emph{Specification Tests for the Propensity Score},
-      available at \url{http://sites.google.com/site/pedrohcsantanna/}.
+Sant'Anna, Pedro H. C, and Song, Xiaojun (2019), \emph{Specification Tests for the Propensity Score},
+      Journal of Econometrics, vol. 210 (2), p. 379-404.
 }
-
